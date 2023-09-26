@@ -1,0 +1,241 @@
+---
+title: "LBB1"
+author: "Luthfi"
+date: "2023-09-23"
+output: html_document
+---
+***1. REAL ESTATE MELBOURNE***
+
+This is a snapshot of a dataset created by Tony Pino.
+link: https://www.kaggle.com/datasets/dansbecker/melbourne-housing-snapshot
+
+It was scraped from publicly available results posted every week from Domain.com.au. He cleaned it well, and now it's up to you to make data analysis magic. The dataset includes Address, Type of Real estate, Suburb, Method of Selling, Rooms, Price, Real Estate Agent, Date of Sale and distance from C.B.D.
+
+**Notes on Specific Variables**
+Rooms: Number of rooms
+
+Price: Price in dollars
+
+Method: S - property sold; SP - property sold prior; PI - property passed in; PN - sold prior not disclosed; SN - sold not disclosed; NB - no bid; VB - vendor bid; W - withdrawn prior to auction; SA - sold after auction; SS - sold after auction price not disclosed. N/A - price or highest bid not available.
+
+Type: br - bedroom(s); h - house,cottage,villa, semi,terrace; u - unit, duplex; t - townhouse; dev site - development site; o res - other residential.
+
+SellerG: Real Estate Agent
+
+Date: Date sold
+
+Distance: Distance from CBD
+
+Regionname: General Region (West, North West, North, North east …etc)
+
+Propertycount: Number of properties that exist in the suburb.
+
+Bedroom2 : Scraped # of Bedrooms (from different source)
+
+Bathroom: Number of Bathrooms
+
+Car: Number of carspots
+
+Landsize: Land Size
+
+BuildingArea: Building Size
+
+CouncilArea: Governing council for the area
+
+```{r}
+#Read data csv
+melb <- read.csv("data_input/melb_data.csv")
+
+#install package dplyr to manipulate character data
+library(dplyr)
+
+```
+
+***2. DATA PREPERATION***
+```{r}
+#First, we read the .csv file and use only the relevant columns
+melb
+```
+
+
+```{r}
+# Removing unnecessary columns using select()
+melb2 <- melb[,!names(melb) %in% c("Address", "Postcode", "Lattitude", "Longtitude", "Propertycount", "CouncilArea", "YearBuilt")]
+melb2
+```
+
+```{r}
+# Converting Date datatype
+#Converting Date
+melb2$Date <- as.Date(melb2$Date, format = "%d/%m/%Y") 
+
+#Converting as Factor
+melb2$Suburb <- as.factor(melb2$Suburb)
+melb2$Method <- as.factor(melb2$Method)
+melb2$Type <- as.factor(melb2$Type)
+melb2$Regionname <- as.factor(melb2$Regionname)
+
+
+#Converting as Interger
+melb2$Bedroom2 <- as.integer(melb2$Bedroom2)
+melb2$Bathroom <- as.integer(melb2$Bathroom)
+melb2$Car <- as.integer(melb2$Car)
+melb2$Landsize <- as.integer(melb2$Landsize)
+melb2$BuildingArea <- as.integer(melb2$BuildingArea)
+
+```
+
+```{r}
+# Removing NA Rows and "0"
+melb2 <- melb2[!is.na(melb2$BuildingArea), ] #Removing rows that has NA BuildingArea
+melb2 <- melb2[melb2$Landsize != 0, ]
+melb2
+```
+```{r}
+#Checking the string and uniques
+str(melb2)
+unique(melb2$Regionname)
+```
+```{r}
+#Renaming Categories for Regionname
+melb2 <- melb2 %>%
+  mutate(Regionname = recode(Regionname, "Northern Victoria" = "Northern Metropolitan")) #Changing north
+
+melb2 <- melb2 %>%
+  mutate(Regionname = recode(Regionname, "Eastern Victoria" = "Eastern Metropolitan")) #Changing east
+
+melb2 <- melb2 %>%
+  mutate(Regionname = recode(Regionname, "Western Victoria" = "Western Metropolitan")) #Changing west
+
+```
+
+
+***3. DATA EXPLORATION***
+
+```{r}
+# Creating Price Per Squaremeter Column
+melb2$PricePerSQM <- (melb2$Price / melb2$Landsize)
+
+#Removing outlier
+Q1 <- quantile(melb2$PricePerSQM, 0.25)
+Q3 <- quantile(melb2$PricePerSQM, 0.75)
+IQR <- Q3 - Q1
+LB <- Q1 - 1.5*IQR
+UB <- Q3 + 1.5*IQR
+
+melb2 <- subset(melb2, PricePerSQM >= LB & PricePerSQM <= UB)
+```
+
+
+```{r}
+#Number of Rooms in Building
+hist(melb2$Rooms)
+mean(melb2$Rooms) # Center of Data = 2.977419 (Rooms)
+
+#Distance
+hist(melb2$Distance)
+median(melb2$Distance) # Center of Data = 9.2 (Distance)
+
+#Bedroom2
+hist(melb2$Bedroom2)
+median(melb2$Bedroom2) # Center of Data = 3 (Bedroom)
+
+#Bathroom
+hist(melb2$Bathroom)
+median(melb2$Bathroom) # Center of Data = 1 (Bathroom)
+
+#Car
+hist(melb2$Car)
+median(melb2$Car) # Center of Data = NA (Car)
+
+#BuildingArea
+hist(melb2$BuildingArea)
+median(melb2$BuildingArea) # Center of Data = 126 (Building Area)
+```
+```{r}
+#Top 10 suburb with the highest number of sold properties
+
+freq_suburb <- table(melb2$Suburb) # Create frequency table
+freq_suburb_df <- as.data.frame(freq_suburb) # Create data frame
+colnames(freq_suburb_df) <- c("Suburb", "PropertiesSold") # Renaming columns
+freq_suburb_df <- freq_suburb_df[order(-freq_suburb_df$PropertiesSold),]
+top10_freq_suburb <- freq_suburb_df[1:10, ]
+top10_freq_suburb
+```
+
+
+
+```{r}
+# Top 10 Suburb with highest average of buying price per square meter
+average_price <- melb2 %>%
+  group_by(Suburb) %>%
+  summarise(Average_Price_Per_Square_Meter = median(PricePerSQM, na.rm = TRUE)) # Creating a table
+average_price <- average_price[order(-average_price$Average_Price_Per_Square_Meter),] # Sorting order
+colnames(mean_price) <- c("Suburb", "Average price Per SQM") # Renaming columns
+top10_freq_suburb2 <- mean_price[1:10, ]
+top10_freq_suburb2
+
+```
+
+
+```{r}
+boxplot(melb2$PricePerSQM~ melb2$Type,horizontal = F)
+# h - house,cottage,villa, semi,terrace
+# u - unit, duplex
+# t - townhouse; dev site - development site
+```
+Dari boxplot di atas, ditemukan bahwa Tipe residen Unit memiliki median harga per meter persegi tertinggi dibandingkan dengan tipe  Town House.
+
+```{r}
+#Plotting Price PerSQM and Distance to CBD
+plot(melb2$PricePerSQM~ melb2$Distance)
+cor(melb2$Distance, melb2$PricePerSQM)
+```
+Dari plot di atas ditemukan bahwa banyak housing yang terjual berdekatan dengan CBD. Namun, setelah melakukan pengecekan dengan cor(), terdapat korelasi negatif antara jarak CBD dengan harga per meter persegi. Sehingga, tidak ada hubungan antara jarak CBD dengan harga.
+```{r}
+#Plotting Price PerSQM and number of rooms
+boxplot(melb2$PricePerSQM~ melb2$Rooms)
+```
+Dari plot di atas, ditemukan bahwa housing yang memiliki ruangan dua memiliki median harga per meter persegi tertinggi.
+
+```{r}
+#Plotting Price PerSQM and number of bedroom
+boxplot(melb2$PricePerSQM~ melb2$Bedroom2)
+```
+Dari plot di atas, ditemukan bahwa housing yang memiliki dua ruangan tidur memiliki median harga per meter persegi tertinggi.
+
+```{r}
+#Plotting Price PerSQM and number of bathroom
+boxplot(melb2$PricePerSQM~ melb2$Bathroom)
+```
+Dari plot di atas, ditemukan bahwa housing yang memiliki dua ruangan tidur memiliki median harga per meter persegi tertinggi.
+
+
+```{r}
+#Plotting Price PerSQM and region
+par(cex = 0.4) #Reducing Text size
+plot(melb2$PricePerSQM~ melb2$Regionname)
+```
+Dari boxplot di atas, ditemukan bahwa Southern Metropolitan memiliki median harga per meter persegi tertinggi, sedangkan South-Eastern Metropolitan memiliki harga terendah.
+
+***4. SUMMARY***
+
+Dalam data properti yang disajikan, properti yang paling banyak terjual berada di suburb Reservoir.
+
+Namun, properti yang paling mahal adalah sebuah townhouse yang terletak di area suburb East Melbourne. Properti ini memiliki luas sekitar 15703.536 meter persegi per meter persegi (pSQM), menjadikannya salah satu yang paling mahal dalam dataset ini. Townhouse ini memiliki 2 ruangan, 2 kamar tidur, dan 4 kamar mandi. Terletak di wilayah Southern Metropolitan, properti ini menawarkan kemewahan dan fasilitas yang sangat eksklusif, mencerminkan gaya hidup yang mewah dan nyaman bagi pemiliknya.
+
+
+----------------------------------------
+DOT POINTS
+
+1. Dalam data yang disajikan, properti yang paling banyak terjual berada pada suburb Reservoir
+
+2. Housing Termahal:
+- Area suburb East Melbourne (harga =  15703.536 pSQM)
+- Tipe Housing Townhouse
+- Memiliki 2 Ruangan
+- Memiliki 2 Bedroom
+- Memiliki 4 Bathroom
+- Lokasi di Southern Metropolitan
+
+
