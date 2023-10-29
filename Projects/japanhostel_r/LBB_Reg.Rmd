@@ -1,0 +1,251 @@
+---
+title: "LBB_Reg"
+author: "Luthfi"
+date: "2023-10-29"
+output:
+  html_document:
+    theme: flatly
+    highlight: tango
+    toc: true
+    toc_float:
+      collapsed: false
+    number_sections: true
+    df_print: paged
+---
+
+# 1. JAPAN HOSTEL DATASET
+```{r}
+library(knitr)
+knitr::include_graphics("Japan Hostel.png")
+```
+Img Source : <https://www.momondo.com/rimg/kimg/20/67/261de822f504c173.png?width=1366&height=768&crop=true>
+
+link: <https://www.kaggle.com/datasets/koki25ando/hostel-world-dataset>
+
+Data for 300+ Hostels in Japan by Hostel World
+
+Their service is for young and independent travelers seeking a social travel experience. The group focuses on hostels, maintains a leading hostel database with over 16,000 hostels and approximately 20,000 other forms of budget accommodation available globally unlike the other travel agents.
+Since 2005, it has also been managing customer-generated review database consisting of more than 10 million post-stay reviews.
+
+## 1.1 Notes on Specific Variables
+
+hostel.name = Hostel Name
+City = City name where hostel is located in
+price.from = Minimum Price for 1 night stay
+Distance = Distance from city center (km)
+summary.score = Summary score of ratings
+rating.band = Rating band
+atmosphere = Rating score of atmosphere
+cleanliness = Rating score of cleanliness
+facilities = Rating score of facilities 
+location.y = Rating score of location
+security = Rating score of security
+staff = Rating score of staff
+valueformoney = Rating score of value for money
+
+## 1.2 Objective
+Dependent variable = valueformoney
+
+Finding which column is the highest predictor and creating the best model
+
+#2. DATA PREPERATION
+
+The First step is inserting the csv file into R located in data_input and then installing the necessary plugins including dplyr, lubridate, ggally, etc. 
+
+```{r}
+#Read data csv
+hostel <- read.csv("hostel_japan_lbb.csv")
+
+library(dplyr) 
+library(lubridate) 
+library(GGally) 
+library(MLmetrics) 
+library(performance) 
+library(lmtest)
+library(car)
+
+```
+
+Next, we will observe our dataset which we exported from the csv
+```{r}
+hostel
+```
+
+We will also observe the str() to check all the columns 
+```{r}
+str(hostel)
+```
+After checking the str(), we will delete all the rows that contains NA valued data within it to prevent unnecessary error during modeling.
+```{r}
+#Deleting rows with NA value
+hostel <- na.omit(hostel)
+```
+
+Next, we will remove the columns that have too many unique variables, as they do not contribute to our modeling process.
+```{r}
+#Deleting unnecessary columns (which has too many unique variables)
+hostel <- hostel %>%
+  select(-c(X, hostel.name)) 
+```
+
+```{r}
+#Checking the uniques of rating.band
+unique(hostel$rating.band)
+```
+Considering that "Rating" seems unrelated to the other four unique variables, we will proceed to remove it, as it may be an erroneous entry. Furthermore, we plan to modify the column type from character to factor.
+```{r}
+#Filtering out "Rating" from hostel$rating.band
+hostel <- hostel %>%
+  filter(rating.band != "Rating") %>%
+  mutate(rating.band = as.factor(rating.band))
+```
+
+Afterward, we will remove the words from "Distance" column and turn it into numerical.
+```{r}
+# Cleaning distance column
+hostel$Distance <- as.numeric(gsub("km from city centre", "", hostel$Distance))
+```
+
+```{r}
+unique(hostel$City)
+```
+Turning hostel$City into factors as there are only 5 uniques.
+```{r}
+hostel <- hostel %>%
+  mutate(City = as.factor(City))
+```
+
+
+#3. DATA EXPLORATION
+
+According to the plot below, "summary.score" exhibits the highest correlation with "valueformoney," with a correlation coefficient of 0.8. This is followed by "facilities," which has a correlation coefficient of 0.7. While "Distance" and "price.from" has the lowest correlation with the score of 0.1 and -0.2. 
+```{r}
+#By using ggcorr, we will know which columns correlates more with our dependent variable, the closer it is to -1 / 1,  the higher the correlation.
+ggcorr(hostel, label=T)
+```
+## 3.1 First Model (All Predictors)
+
+The first model we will create is by using all of the available predictors.
+```{r}
+model_1 <- lm(formula = valueformoney ~ . , data = hostel)
+
+summary(model_1)
+```
+
+Model Interpretation: 
+- 95% variance from target(valueformoney) could be explained by the predictor
+- summary.score,atmosphere,cleanliness,facilities,location.y,security, and staff are the most significant predictors
+
+## 3.2 Second Model
+The second model is using only a single predictor with the highest correlation (facilities)
+
+```{r}
+model_2 <- lm(formula = valueformoney ~ summary.score  , data = hostel)
+
+summary(model_2)
+```
+Model Interpretation: 
+- A decrease of R-squared to 66% by using only a single predictor
+
+## 3.3 Third Model
+The third model is using all the high correlation predictors from the first model
+```{r}
+model_3 <- lm(formula = valueformoney ~  summary.score + atmosphere + cleanliness + facilities + location.y + security + staff  , data = hostel)
+
+summary(model_3)
+```
+Model Interpretation: 
+- Model has the same R-squared as the first model by using only the significant ones
+
+#4.  PREDICTION
+To compare the models we created and the original value of our dependable variable, we will need to create a new dataset called "hostel_pred".
+```{r}
+hostel_pred <- data.frame(ori_value = hostel$valueformoney) #Creating dataframe
+```
+
+Next, we will insert the model predictions into the dataset so we could observe it easily by using the command head().
+```{r}
+hostel_pred$model_1 <- predict(model_1, hostel)
+hostel_pred$model_2<- predict(model_2, hostel)
+hostel_pred$model_3 <- predict(model_3, hostel)
+
+head(hostel_pred)
+```
+## 4.1 Mean Absolute Error
+
+Mean Absolute Error (MAE) is a simple metric used to measure the accuracy of predictive models in regression. It calculates the average absolute difference between predicted and actual values. MAE is easy to understand, less sensitive to outliers than some other metrics, and minimization during model training results in predictions that are as close as possible to actual values. 
+```{r}
+#Comparing the MAE's of the three models
+MAE(y_pred = hostel_pred$model_1,
+    y_true = hostel_pred$ori_value)
+
+MAE(y_pred = hostel_pred$model_2,
+    y_true = hostel_pred$ori_value)
+
+MAE(y_pred = hostel_pred$model_3,
+    y_true = hostel_pred$ori_value)
+```
+Model Interpretation: 
+- Model 1 has the best MAE interpretation because it only misses 14.8%
+
+
+## 4.2 Mean Squared Error
+
+Mean Squared Error (MSE) is a commonly used metric in regression analysis to assess predictive model accuracy. It quantifies the average of the squared differences between predicted values and actual values in a dataset. MSE provides a more comprehensive assessment of errors by squaring them, making it sensitive to large errors. During model training, minimizing MSE results in predictions that aim to minimize the overall squared error. However, the squared terms may obscure the understanding of the metric's practical meaning, and it can be heavily influenced by outliers.
+```{r}
+#Comparing the MSE's of the three models
+MSE(y_pred = hostel_pred$model_1,
+    y_true = hostel_pred$ori_value)
+
+MSE(y_pred = hostel_pred$model_2,
+    y_true = hostel_pred$ori_value)
+
+MSE(y_pred = hostel_pred$model_3,
+    y_true = hostel_pred$ori_value)
+```
+Model Interpretation: 
+- Model 1 has the lowest MSE score of 0.03134586 followed closely by Model 3
+
+## 4.3 Root Mean Squared Error
+
+Root Mean Squared Error (RMSE) is a widely used metric in regression analysis to gauge the accuracy of predictive models. It's derived from the Mean Squared Error (MSE) but has a square root applied, making it more interpretable as it's in the same unit as the target variable. RMSE penalizes large errors and offers a holistic view of prediction accuracy. While it's more intuitive, it can still be influenced by outliers, and the square root may complicate the understanding of the metric's practical significance.
+```{r}
+#Comparing the RMSE's of the three models
+RMSE(y_pred = hostel_pred$model_1,
+    y_true = hostel_pred$ori_value)
+
+RMSE(y_pred = hostel_pred$model_2,
+    y_true = hostel_pred$ori_value)
+
+RMSE(y_pred = hostel_pred$model_3,
+    y_true = hostel_pred$ori_value)
+```
+Model Interpretation: 
+- Model 1 has the lowest RMSE score of 0.1770476 followed closely by Model 3
+
+#5.  SUMMARY
+
+📌 
+In summary, from all the three models created, Model 1 is the best because of the following reasons:
+
+- Highest  R-Squared value (0.9553)
+- Lowest MAE (0.1489212)
+- Lowest MSE (0.03134586)
+- Lowest RMSE (0.1770476)
+
+Following closely is Model 3 with the following points:
+
+- R-Squared value (0.9553) # same R-squared value as Model 1
+- MAE (0.1491836)
+- MSE (0.03232151)
+- RMSE (0.1797818)
+
+Model 2 has the worst prediction of all three models by using only a single predictor which has the highest correlation
+
+- R-Squared value (0.6682)
+- MAE (0.3311511)
+- MSE (0.2451581)
+- RMSE (0.4951344)
+
+
+
