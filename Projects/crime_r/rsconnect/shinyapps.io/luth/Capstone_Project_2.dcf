@@ -1,0 +1,12 @@
+name: Capstone_Project_2
+title: Capstone_Project_2
+username: luth
+account: luth
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 10199568
+bundleId: 7806935
+url: https://luth.shinyapps.io/Capstone_Project_2/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
