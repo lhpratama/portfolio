@@ -1,0 +1,335 @@
+---
+title: "LBB_TS"
+author: "Luthfi"
+date: "2023-11-27"
+output:
+  html_document:
+    theme: flatly
+    highlight: tango
+    toc: true
+    toc_float:
+      collapsed: false
+    number_sections: true
+    df_print: paged
+editor_options: 
+  markdown: 
+    wrap: sentence
+---
+
+# Time Series : CRYPTOCURRENCY
+
+```{r}
+library(knitr)
+knitr::include_graphics("cryptocurrency_image1_1130490519_670x377px_300dpi.jpg")
+```
+
+`Img Source` : <https://www.kaspersky.com/content/en-global/images/repository/isc/2021/cryptocurrency_image1_1130490519_670x377px_300dpi.jpg>
+
+`link`: <https://www.kaggle.com/datasets/jessevent/all-crypto-currencies/data>
+
+**Cryptocurrency** is a form of digital or virtual currency that relies on cryptographic techniques to secure financial transactions, control the creation of new units, and verify the transfer of assets. Unlike traditional currencies issued by governments, cryptocurrencies operate on decentralized networks based on blockchain technology. A blockchain is a distributed ledger that records all transactions across a network of computers. One of the key features of cryptocurrencies is decentralization, meaning they are not controlled by any central authority such as a government or financial institution. **Bitcoin**, created in 2009, was the first decentralized cryptocurrency, and since then, numerous other cryptocurrencies, often referred to as altcoins, have been developed. Cryptocurrencies offer the potential for increased financial privacy, lower transaction fees, and borderless transactions, but they also pose challenges such as regulatory concerns, volatility, and security risks. 
+
+As we explore the world of cryptocurrency and its decentralized nature, the application of time series analysis emerges as a valuable tool. By delving into historical trends and behaviors of digital assets, we can harness this approach to not only understand the past but also predict potential future market dynamics, providing a practical means for navigating the complexities of decentralized finance.
+
+**Time series** refers to a sequence of data points collected or recorded over a specific period at equally spaced intervals. These data points are typically ordered chronologically, allowing for the analysis of patterns, trends, and behaviors over time. Time series analysis is a fundamental method in various fields such as economics, finance, weather forecasting, and signal processing. It enables the identification of temporal patterns, seasonality, and anomalies within the data, facilitating predictions and decision-making based on historical trends. Time series data often involves studying how a particular variable changes over time, providing valuable insights into the underlying dynamics of a system or phenomenon.
+
+
+## Objective
+
+To forecast the bitcoin crypto dataset for the next few months by using two types of split data. The first one by splitting the test for a year, and the second one by splitting it for only half-a-year. 
+
+# Preparation
+
+The First step is inserting the csv file into R located in data_input and then installing the necessary plugins including `dplyr`, `lubridate`, `padr`, etc.
+
+```{r}
+# Read data csv
+crypto <- read.csv("crypto-markets.csv")
+
+# Load libraries for unsupervised machine learning
+library(dplyr)     # Data manipulation and transformation
+library(lubridate)  # Date and time manipulation
+library(padr)       # Padding and filling missing time series data
+library(zoo)        # Time series data manipulation
+library(forecast)   # Time series forecasting
+library(TTR)        # Technical Trading Rules
+library(MLmetrics)  # Machine learning evaluation metrics
+library(tseries)    # Time series analysis
+library(fpp)        # Forecasting principles and practice
+library(TSstudio)   # Time series visualization
+library(ggplot2)    # Data visualization
+library(plotly)     # Interactive plots
+library(tidyr)      # Data tidying
+library(glue)       # String manipulation
+```
+
+Next, we will observe our data set which we exported from the *csv*.
+
+```{r}
+head(crypto)
+```
+
+We will also observe the `glimpse()` to check all the columns.
+
+```{r}
+glimpse(crypto)
+```
+
+Checking if there are any NA in dataset
+
+```{r}
+colSums(is.na(crypto))
+```
+Filter to only `bitcoin` and the `date` and `closing price`
+```{r}
+bitcoin <- crypto %>% 
+  filter(slug=="bitcoin") %>% # filter to only bitcoin
+  select(c(date, close)) # filter to only date and close column
+```
+
+
+```{r}
+# Converting date column into date
+bitcoin <- bitcoin %>%
+  mutate(date = as.Date(date))
+```
+
+
+```{r}
+# Checking whether it needs padding or not
+bitcoin %>%
+  arrange() %>%
+  pad() %>%
+  anyNA() 
+```
+
+```{r}
+tail(bitcoin)
+```
+
+```{r}
+bitcoin_ts <- ts(data = bitcoin$close,
+   frequency = 365)
+```
+
+```{r}
+bitcoin_decom <- decompose(bitcoin_ts)
+autoplot(bitcoin_decom)
+```
+From the plot above, it is discovered that there is a presence of both `trend` that goes upward over the time and a `seasonal`. Therefore, we will use a **Triple Exponential Smoothing**.
+
+# Seasonality Analysis
+
+```{r}
+bitcoin %>%
+ggplot(aes(date, close)) +
+  geom_line() +
+  theme_minimal()
+
+```
+
+Observing the line plot, it becomes evident that Bitcoin exhibits a predominantly upward trajectory, steadily ascending until it culminated at its **peak in 2018**. Subsequently, the market underwent a *bearish phase* that persisted until the conclusion of the provided dataset, depicting a notable shift in market dynamics and emphasizing the downward trend post-2018.
+
+
+```{r}
+# Yearly Dataset
+bitcoin_y <- bitcoin %>% 
+  mutate(month = month(date, label = TRUE),      # ekstraksi bulan
+         seasonal = bitcoin_decom$seasonal
+      ) %>% # ekstraksi seasonality
+  distinct(month, seasonal) %>% # mengambil nilai unik di 2 kolom
+  group_by(month) %>%
+  summarise(seasonal = mean(seasonal)) %>% 
+  mutate( 
+        label = glue("Month: {month}
+                 Seasonal: {seasonal}"))
+```
+
+
+
+
+
+
+```{r}
+plot_y <- ggplot(bitcoin_y, aes(x=month, y=seasonal))+
+  geom_col(fill = "lightgreen", aes(text = label))+
+  scale_fill_gradient() +
+  labs(title = "Yearly Seasonal Distribution",
+       x = NULL,
+       y = "Seasonal Value") +
+  theme_minimal()
+
+ggplotly(plot_y, tooltip = "text")
+```
+Analyzing the depicted graph, it is evident that the peak seasonal values occur at the onset and conclusion of the year, reaching a maximum of `1499.29` in December, succeeded closely by January with a recorded value of `989.58`. In contrast, the trough in seasonal values is observed in September, plummeting to a low of `-572.22`. This indicates a distinct seasonal pattern, characterized by notable highs in December and January, and a significant dip in September.
+
+# Model Fitting and Analysis
+
+## One Year Test
+
+
+```{r}
+# Using a year as test
+data_test <- tail(bitcoin_ts, 365) # Using one week as Testing
+data_train <- head(bitcoin_ts, length(bitcoin_ts)-365)
+```
+### Exponential Smoothing - Triple Exponential Smoothing 
+
+```{r}
+# Modeling Triple Exponential Smoothing and Additive seasonal
+data_es <- HoltWinters(x = data_train,seasonal = "additive") 
+
+# Forecasting one week after data cut-off
+data_forecast_es <- forecast(data_es, 365)
+
+# Checking accuracy
+MAE(data_forecast_es$mean,data_test)
+```
+```{r}
+# Plotting Visualization
+plot(data_forecast_es)
+```
+
+### ARIMA
+
+```{r}
+# Modeling with ARIMA
+data_arima <- stlm(data_train, method = "arima")
+
+# Forecasting one week after data cut-off
+data_forecast_arima <- forecast(data_arima, 365)
+
+# Checking accuracy
+MAE(data_forecast_arima$mean,data_test)
+```
+
+```{r}
+# Plotting Visualization
+plot(data_forecast_es)
+```
+### ETS
+
+```{r}
+# Modeling with ETS
+data_ets <- stlm(data_train, method = "ets")
+
+# Forecasting one week after data cut-off
+data_forecast_ets <- forecast(data_ets, 365)
+
+# Checking accuracy
+MAE(data_forecast_ets$mean,data_test)
+```
+
+```{r}
+# Plotting Visualization
+plot(data_forecast_ets)
+```
+## Half-A-Year Test
+```{r}
+# Using half-a-year as test
+data_test_1 <- tail(bitcoin_ts, 182) # Using one week as Testing
+data_train_1 <- head(bitcoin_ts, length(bitcoin_ts)-182)
+```
+### Exponential Smoothing - Triple Exponential Smoothing 
+
+```{r}
+# Modeling Triple Exponential Smoothing and Additive seasonal
+data_es_1 <- HoltWinters(x = data_train_1,seasonal = "additive") 
+
+# Forecasting one week after data cut-off
+data_forecast_es_1 <- forecast(data_es_1, 182)
+
+# Checking accuracy
+MAE(data_forecast_es_1$mean,data_test)
+```
+```{r}
+# Plotting Visualization
+plot(data_forecast_es_1)
+```
+
+### ARIMA
+
+```{r}
+# Modeling with ARIMA
+data_arima_1 <- stlm(data_train_1, method = "arima")
+
+# Forecasting one week after data cut-off
+data_forecast_arima_1 <- forecast(data_arima_1, 182)
+
+# Checking accuracy
+MAE(data_forecast_arima_1$mean,data_test)
+```
+
+```{r}
+# Plotting Visualization
+plot(data_forecast_arima_1)
+```
+
+### ETS
+
+
+```{r}
+# Modeling with ETS
+data_ets_1 <- stlm(data_train_1, method = "ets")
+
+# Forecasting one week after data cut-off
+data_forecast_ets_1 <- forecast(data_ets_1, 365)
+
+# Checking accuracy
+MAE(data_forecast_ets_1$mean,data_test)
+```
+```{r}
+# Plotting Visualization
+plot(data_forecast_ets_1)
+```
+# Prediction Performance
+
+## One Year Test
+
+In the evaluation of cryptocurrency forecasting models based on Mean Absolute Error (MAE) for a one-year data test, the results indicate that Autoregressive Integrated Moving Average (ARIMA) outperformed the other models. ARIMA yielded the lowest MAE of 9711.51, suggesting higher accuracy in predicting cryptocurrency prices during the specified period. Following ARIMA, Error-Trend-Seasonality (ETS) had a MAE of 10216.71, while Exponential Smoothing (ES) exhibited the highest MAE at 12369.12.
+
+In summary, the ranking from best to least accurate based on MAE is as follows:
+
+-   ARIMA (MAE = 9711.51)
+-   ETS (MAE = 10216.71)
+-   Exponential Smoothing (ES) (MAE = 12369.12)
+
+## Half-A-Year Test
+
+The models are ranked based on their MAE values, with lower MAE indicating greater accuracy. In this instance, Exponential Smoothing (ES) exhibited the lowest MAE, suggesting it performed the best in predicting cryptocurrency prices during the specified half-year period. Following ES, Error-Trend-Seasonality (ETS) and Autoregressive Integrated Moving Average (ARIMA) had higher MAE values, with ETS showing slightly better performance than ARIMA.
+
+To summarize the performance ranking:
+
+-   ES (MAE = 1015.164)
+-   ETS (MAE = 1714.111)
+-   ARIMA (MAE = 1728.625)
+
+# Conclusion
+
+In the assessment of cryptocurrency forecasting models over one year, **Autoregressive Integrated Moving Average (ARIMA)** demonstrated superior performance with the lowest Mean Absolute Error (MAE) of **9711.51**, indicating higher accuracy in predicting prices. However, during a half-year test, **Exponential Smoothing (ES)** exhibited the best performance with the lowest MAE of **1015.164**, suggesting it as the preferable model for shorter-term predictions. Therefore, the choice of model depends on the forecasting horizon, with ARIMA favored for longer-term predictions and ES recommended for shorter-term forecasts based on their respective MAE performances.Therefore, going forward we will use the MAE of ES from Half-A-Year Test.
+
+
+```{r}
+# No Autocorrelation Test
+Box.test(data_forecast_es_1$residuals)
+```
+The Box-Pierce test, applied to the residuals of data_forecast_es_1, reveals a significant chi-squared statistic of 11.299 with 1 degree of freedom and a p-value of 0.0007753, indicating a **substantial correlation** in the residuals. This rejects the null hypothesis and suggests that autocorrelation is present in the data.
+
+```{r}
+# Normality Test
+shapiro.test(data_forecast_es_1$residuals)
+```
+The Shapiro-Wilk normality test conducted on the residuals of data_forecast_es_1 demonstrates a W statistic of 0.51593 and an extremely low p-value (< 2.2e-16), indicating a departure from normal distribution. Therefore, the **residuals do not exhibit a normal spread** based on the results of the Shapiro-Wilk test.
+
+
+
+
+
+
+
+
+
+
+
+
+
